@@ -204,4 +204,8 @@ class Scooter:
 
 if __name__ == "__main__":
     scooter = Scooter()
+<<<<<<< HEAD
     scooter.run()
+=======
+    scooter.run()
+>>>>>>> 8cad015 (legger til riktig scooter)
