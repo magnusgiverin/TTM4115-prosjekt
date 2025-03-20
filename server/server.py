@@ -1,49 +1,65 @@
 from flask import Flask, jsonify, request
+import threading
+import logging
+from time import sleep
+from ScooterManager import ScooterManagerComponent
 
+# global variables
 app = Flask(__name__)
+scooterManager = ScooterManagerComponent()
+locations = []
+getLocationsInterval = 5
+
+zoneMap = {
+    "yellow": [
+        ((10.5,4), (20,14.2)),
+        ((1,4), (2,4.5))
+        ],
+    "red": [
+        ((50,50),  (67,69))
+        ],
+}
 
 @app.route('/')
 def home():
-    return """
-    <html>
-    <body>
-        <h1>Hello, World!</h1>
-        <button onclick="buttonClicked('button1')">Button 1</button>
-        <button onclick="buttonClicked('button2')">Button 2</button>
-        <button onclick="buttonClicked('button3')">Button 3</button>
-        <script>
-            function buttonClicked(buttonId) {
-                fetch('/button-click', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ buttonId: buttonId }),
-                })
-                .then(response => response.json())
-                .then(data => {
-                    alert('Response from server: ' + data.message);
-                });
-            }
-        </script>
-    </body>
-    </html>
-    """
+    return render_template("frontend.html")
 
-@app.route('/button-click', methods=['POST'])
-def button_click():
+@app.route('/guiClick', methods=['POST'])
+def guiClick():
     data = request.get_json()
-    button_id = data['buttonId']
-    # Define your button click handling logic here
-    if button_id == 'button1':
-        message = 'Button 1 was clicked!'
-    elif button_id == 'button2':
-        message = 'Button 2 was clicked!'
-    elif button_id == 'button3':
-        message = 'Button 3 was clicked!'
-    else:
-        message = 'Unknown button!'
-    return jsonify({'message': message})
+    command = data['command']
+    scooterID = data['scooterID']
+    match command:
+        case "getLocations":
+            pass
+        case "unlock":
+            pass
+        case "lock":
+            pass
+        # TODO handle button presses
+
+@app.route('/getLocations')
+def returnLocations():
+    return locations
+
+@app.route('/getCost')
+def returnZoneAndCost():
+    zone
+    return [zone, cost]
+
+def calculateCost(location):
+    return 
+
+def scooterHandler():
+    while True:
+        locations = scooterManager.get_locations()
+        sleep(getLocationsInterval)
 
 if __name__ == '__main__':
+
+    mqttThread = threading.Thread(target=scooterHandler)
+    mqttThread.start()
+
+    print(scooterManager.get_locations())
+
     app.run(host='0.0.0.0', port=3000, debug=True)
