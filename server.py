@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 import threading
 import logging
 from time import sleep
@@ -7,13 +7,13 @@ from ScooterManager import ScooterManagerComponent
 # global variables
 app = Flask(__name__)
 scooterManager = ScooterManagerComponent()
-locations = []
+locations = {69: ((45.6, 60.8), 420)}
 getLocationsInterval = 5
 yellowZoneFee = 10
 
-zoneMap = [
-    ["yellow", (10.5,4), (20,14.2)],
-    ["yellow", (1,4),    (2,4.5)],
+zones = [
+    ["yellow", (10.5,60), (20,64)],
+    ["yellow", (80,70),  (86,90)],
     ["red",    (50,50),  (67,69)]
 ]
 
@@ -30,15 +30,31 @@ def guiClick():
         case "getLocations":
             return returnLocations()
         case "unlock":
-            return scooterManager.on_frontend_command(command, scooterID)
+            scooterManager.on_frontend_command(command, scooterID)
+            while True:
+                result = scooterManager.get_status(scooterID, command)
+                if result == True:
+                    return 1
+                elif result == False:
+                    return 0
         case "lock":
-            return scooterManager.on_frontend_command(command, scooterID)
+            scooterManager.on_frontend_command(command, scooterID)
+            while True:
+                result = scooterManager.get_status(scooterID, command)
+                if result == True:
+                    return 1
+                elif result == False:
+                    return 0
         case "getPrice":
             return calculateCost(scooterID)
 
 @app.route('/getLocations')
 def returnLocations():
-    return locations
+    return jsonify(locations)
+
+@app.route('/getZones')
+def returnZones():
+    return jsonify(zones)
 
 @app.route('/getCost')
 def returnZoneAndCost():
@@ -48,7 +64,7 @@ def calculateCost(scooterID):
     cost = 0
     currentCoords = locations[scooterID]
 
-    for zone in zoneMap:
+    for zone in zones:
         if zone[1][0] < currentCoords[0] and currentCoords[0] < zone[1][1]:
             if zone[2][0] < currentCoords[1] and currentCoords[1] < zone[2][1]:
                 if zone[0] == "yellow":
@@ -61,14 +77,14 @@ def calculateCost(scooterID):
 
 def updateLocations():
     while True:
+        global locations
         locations = scooterManager.get_locations()
+        print(locations)
         sleep(getLocationsInterval)
 
 if __name__ == '__main__':
 
     locationsThread = threading.Thread(target=updateLocations)
     locationsThread.start()
-
-    print(scooterManager.get_locations())
 
     app.run(host='0.0.0.0', port=3000, debug=True)

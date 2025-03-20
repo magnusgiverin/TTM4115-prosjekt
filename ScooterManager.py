@@ -4,8 +4,9 @@ import paho.mqtt.client as mqtt
 import logging
 import sys
 import os
+import random
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scooter'))
 from Scooter import Scooter
 
 MQTT_BROKER = 'mqtt20.iik.ntnu.no'
@@ -47,14 +48,23 @@ class ScooterManagerComponent:
 
     def on_connect(self, client, userdata, flags, rc):
         # we just log that we are connected
-        self._logger.debug('MQTT connected to {}'
+        self._logger.debug('MQTT connected to {}'.format(client))
         
     def get_locations(self):
         return self.locations
     
-    def get_response(self, scooter_id):
-        pass
+    def get_status(self, scooter_id, command):
+        if((scooter_id, command) in self.status.keys()):
+            return self.status[(scooter_id, command)]
+        else:
+            None
     
+    def on_frontend_command(self, command, scooter_id):
+        if command == "lock" or command == "unlock":
+            self.stm_driver.send(command, f"scooter_{scooter_id}")
+        else:
+            self._logger.error('Unknown command received from frontend.')
+        
     def on_message(self, client, userdata, msg):
         """
         Processes incoming MQTT messages.
@@ -83,20 +93,25 @@ class ScooterManagerComponent:
         
         command = payload.get('command')
         type = payload.get('type')
-        
+                
         if command == "location_ping":
             id = payload.get('scooter_id')
             coordinates = payload.get('coordinates')
             timestamp = payload.get('timestamp')
             
-            if id and coordinates and timestamp:
-                self.locations[id] = (id, coordinates, timestamp)
+            self.locations[id] = (coordinates, timestamp)
         
-        if type == "response":
+        elif type == "response":
             if command == "lock" or command == "unlock":
                 id = payload.get('scooter_id')
                 coordinates = payload.get('coordinates')
                 
+                self.status[(id, command)] = True
+            
+            if command == "error":
+                id = payload.get('scooter_id')
+                
+                self.status[(id, command)] = False
                 
         # if command == 'new_timer':
         #     name = payload.get('name')
@@ -126,7 +141,7 @@ class ScooterManagerComponent:
         #         self.stm_driver.send('timer_stop', name)
                 
         else:
-            self._logger.error('Unknown command received.')
+            self._logger.error(f'Unknown command received. {payload}')
         
         # TODO extract command
 
@@ -180,8 +195,12 @@ class ScooterManagerComponent:
         # create some scooters as stms
         self.locations = {}
         for i in range(3):
-            scooter = Scooter(i, self)
+            coordinates = (random.randint(0, 100), random.randint(0, 100))
+            scooter = Scooter(i, self, coordinates)
             self.stm_driver.add_machine(scooter.stm)
+            
+        # response status
+        self.status = {}
 
     def stop(self):
         """
@@ -192,5 +211,3 @@ class ScooterManagerComponent:
 
         # stop the state machine Driver
         self.stm_driver.stop()
-
-# asdf

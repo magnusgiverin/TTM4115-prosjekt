@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image with Markers</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0f0f0; }
+        .container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+        }
+        .image { 
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+            max-height: 100vh;
+            display: block;
+        }
+        .marker {
+            position: absolute;
+            width: 20px; height: 20px;
+            background: green;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .button-container {
+            margin-top: auto;
+            padding: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            background: blue;
+            color: white;
+            border-radius: 5px;
+        }
+        .markerBox {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Prevent interference with clicks */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <img id="map" src="{{ url_for('static', filename='images/trd_map.png') }}" class="image">
+        <div id="markers" class="markerBox"></div>
+    </div>
+    <div class="button-container">
+        <button id="unlock">Unlock</button>
+        <button id="lock">Lock</button>
+        <button id="getLocations">getLocations</button>
+        <button id="getPrice">getPrice</button>
+    </div>
+    <script>
+		var updatePosIntervalMS = 5000;
+		var updateZoneIntervalMS = 1000; // TODO change
+		var selectedScooterId;
+
+        var zones;
+        var markers;
+
+        const markerContainer = document.getElementById("markers");
+
+		async function sendCommand(action, scooterID) {
+			try {
+				let response = await fetch("/guiClick", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({
+						command: action,
+						scooterID: scooterID
+					})
+				});
+				if (response.ok) {
+                    return response.json();
+				} else {
+					console.error("Error updating scooter status");
+				}
+			} catch (error) {
+				console.error("Error sending request:", error);
+			}
+		}
+
+        function selectScooter(id) {
+            console.log(id);
+        }
+
+		async function updatePositions() {
+			let markers = await sendCommand("getLocations", 0);
+			console.log(markers);
+            // markerContainer.innerHTML = ""; // Clear previous markers
+            document.querySelectorAll('.markerBox .marker').forEach(el => el.remove());
+            // Object.values(markers).forEach(([position, _]) => {
+            //     const [x, y] = position; // Extract (x, y) from ((x, y), extraData)
+            //     const div = document.createElement("div");
+            //     div.classList.add("marker");
+            //     div.style.left = x + "%";
+            //     div.style.top = y + "%";
+            //     // div.onclick = () => selectScooter(key);
+            //     markerContainer.appendChild(div);
+            Object.entries(markers).forEach(([key, [position, _]]) => {
+                const [x, y] = position; // Extract (x, y) from ((x, y), extraData)
+                const div = document.createElement("div");
+                div.classList.add("marker");
+                div.style.left = x + "%";
+                div.style.top = y + "%";
+                div.onclick = () => console.log("aaaa");
+                markerContainer.appendChild(div);
+            });
+		}
+
+        function createZone(c1, c2, color) {
+            x1 = c1[0];
+            y1 = c1[1];
+            x2 = c2[0];
+            y2 = c2[1];
+            const zone = document.createElement("div");
+            zone.classList.add("zone");
+            zone.style.position = "absolute";
+            zone.style.left = Math.min(x1, x2) + "%";
+            zone.style.top = Math.min(y1, y2) + "%";
+            zone.style.width = Math.abs(x2 - x1) + "%";
+            zone.style.height = Math.abs(y2 - y1) + "%";
+            zone.style.border = "2px solid " + color; // zone outline
+            zone.style.background = color; // Semi-transparent fill
+            zone.style.opacity = 0.5;
+            markerContainer.appendChild(zone); // Append to the document
+        }
+
+		async function updateZones() {
+			try {
+				let response = await fetch("/getZones", {
+					method: "GET",
+					headers: {
+						"Content-Type": "application/json"
+					},
+				});
+				if (response.ok) {
+                    let data = await response.json();
+                    document.querySelectorAll('.markerBox .zone').forEach(el => el.remove());
+                    for (let i = 0; i < data.length; i++) {
+                        createZone(data[i][1], data[i][2], data[i][0])
+                    }
+                    
+				} else {
+					console.error("Error fetching zones");
+				}
+			} catch (error) {
+				console.error("Error sending request:", error);
+			}
+		}
+
+		const lockButton = document.getElementById("lock");
+		const unlockButton = document.getElementById("unlock");
+		const getPriceButton = document.getElementById("getPrice");
+		const getLocationsButton = document.getElementById("getLocations");
+
+		lockButton.addEventListener("click", () => sendCommand("lock", 0));
+    	unlockButton.addEventListener("click", () => sendCommand("unlock", 0));
+		getPriceButton.addEventListener("click", () => sendCommand("getPrice", 0));
+    	getLocationsButton.addEventListener("click", () => sendCommand("getLocations", 0));
+
+		setInterval(() => updatePositions(), updatePosIntervalMS);
+		setInterval(() => updateZones(), updateZoneIntervalMS);
+        updatePositions();
+        updateZones();
+    </script>
+</body>
+</html>
