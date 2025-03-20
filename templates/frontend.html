@@ -1,0 +1,23 @@
+<html>
+<body>
+    <h1>Hello, World!</h1>
+    <button onclick="buttonClicked('Park')">Button 1</button>
+    <button onclick="buttonClicked('Unlock')">Button 2</button>
+    <button onclick="buttonClicked('Select Zone')">Button 3</button>
+    <script>
+        function buttonClicked(buttonId) {
+            fetch('/button-click', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ buttonId: buttonId }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('Response from server: ' + data.message);
+            });
+        }
+    </script>
+</body>
+</html>
