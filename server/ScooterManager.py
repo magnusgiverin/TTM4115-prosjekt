@@ -49,21 +49,14 @@ class ScooterManagerComponent:
         # we just log that we are connected
         self._logger.debug('MQTT connected to {}'.format(client))
 
-    def on_http_request(self, command, scooter_id):
+    def on_frontend_command(self, command, scooter_id):
         self.stm_driver.send(command, scooter_id)
         
     def get_locations(self):
-        latest_locations = {}
-        for id, coords, timestamp in self.locations:
-            if id not in latest_locations or timestamp > latest_locations[id][1]:
-                latest_locations[id] = (coords, timestamp)
-        
-        result = [(id, data[0]) for id, data in latest_locations.items()]
-        return result
+        return self.locations
     
     def get_response(self, scooter_id):
         pass
-    
     
     def on_message(self, client, userdata, msg):
         """
@@ -99,34 +92,34 @@ class ScooterManagerComponent:
             timestamp = payload.get('timestamp')
             
             if id and coords and timestamp:
-                self.locations.append((id, coords, timestamp))
-        
-        if command == 'new_timer':
-            name = payload.get('name')
-            duration = payload.get('duration')
-            if name and duration:
-                timer_logic = Scooter(name, duration, self)
-                self.stm_driver.add_machine(timer_logic.stm)
-            else:
-                self._logger.error('Invalid payload for new_timer command.')
+                self.locations[id] = (id, coords, timestamp)
+                    
+        # if command == 'new_timer':
+        #     name = payload.get('name')
+        #     duration = payload.get('duration')
+        #     if name and duration:
+        #         timer_logic = Scooter(name, duration, self)
+        #         self.stm_driver.add_machine(timer_logic.stm)
+        #     else:
+        #         self._logger.error('Invalid payload for new_timer command.')
                 
-        elif command == 'status_all_timers':
-            for key in self.stm_driver._stms_by_id:
-                stm = self.stm_driver._stms_by_id[key]._obj
-                self.stm_driver.send('status_single_timer', stm.name)
+        # elif command == 'status_all_timers':
+        #     for key in self.stm_driver._stms_by_id:
+        #         stm = self.stm_driver._stms_by_id[key]._obj
+        #         self.stm_driver.send('status_single_timer', stm.name)
                 
-        elif command == 'status_single_timer':
-            # handle status_single_timer command
-            name = payload.get('name')
-            if name:
-                self.stm_driver.send('status_single_timer', name)
-            else:
-                self._logger.error('Invalid payload for status_single_timer command.')
+        # elif command == 'status_single_timer':
+        #     # handle status_single_timer command
+        #     name = payload.get('name')
+        #     if name:
+        #         self.stm_driver.send('status_single_timer', name)
+        #     else:
+        #         self._logger.error('Invalid payload for status_single_timer command.')
         
-        elif command == 'cancel_timer':
-            name = payload.get('name')
-            if name:
-                self.stm_driver.send('timer_stop', name)
+        # elif command == 'cancel_timer':
+        #     name = payload.get('name')
+        #     if name:
+        #         self.stm_driver.send('timer_stop', name)
                 
         else:
             self._logger.error('Unknown command received.')
@@ -161,13 +154,17 @@ class ScooterManagerComponent:
         # create a new MQTT client
         self._logger.debug('Connecting to MQTT broker {} at port {}'.format(MQTT_BROKER, MQTT_PORT))
         self.mqtt_client = mqtt.Client()
+        
         # callback methods
         self.mqtt_client.on_connect = self.on_connect
         self.mqtt_client.on_message = self.on_message
+        
         # Connect to the broker
         self.mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
+        
         # subscribe to proper topic(s) of your choice
         self.mqtt_client.subscribe(MQTT_TOPIC_INPUT)
+        
         # start the internal loop to process MQTT messages
         self.mqtt_client.loop_start()
 
@@ -176,7 +173,8 @@ class ScooterManagerComponent:
         self.stm_driver.start(keep_active=True)
         self._logger.debug('Component initialization finished')
 
-        self.locations = []
+        # create some scooters as stms
+        self.locations = {}
         for i in range(3):
             scooter = Scooter(i, self)
             self.stm_driver.add_machine(scooter.stm)

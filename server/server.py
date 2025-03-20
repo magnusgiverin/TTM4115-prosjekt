@@ -9,20 +9,17 @@ app = Flask(__name__)
 scooterManager = ScooterManagerComponent()
 locations = []
 getLocationsInterval = 5
+yellowZoneFee = 10
 
-zoneMap = {
-    "yellow": [
-        ((10.5,4), (20,14.2)),
-        ((1,4), (2,4.5))
-        ],
-    "red": [
-        ((50,50),  (67,69))
-        ],
-}
+zoneMap = [
+    ["yellow", (10.5,4), (20,14.2)],
+    ["yellow", (1,4),    (2,4.5)],
+    ["red",    (50,50),  (67,69)]
+]
 
 @app.route('/')
 def home():
-    return render_template("frontend.html")
+    return render_template("index.html")
 
 @app.route('/guiClick', methods=['POST'])
 def guiClick():
@@ -31,12 +28,15 @@ def guiClick():
     scooterID = data['scooterID']
     match command:
         case "getLocations":
-            pass
+            return returnLocations()
         case "unlock":
-            pass
+            scooterManager.on_frontend_command(command, scooterID)
+            return
         case "lock":
-            pass
-        # TODO handle button presses
+            scooterManager.on_frontend_command(command, scooterID)
+            return
+        case "getPrice":
+            return calculateCost(scooterID)
 
 @app.route('/getLocations')
 def returnLocations():
@@ -44,21 +44,32 @@ def returnLocations():
 
 @app.route('/getCost')
 def returnZoneAndCost():
-    zone
-    return [zone, cost]
+    pass
 
-def calculateCost(location):
-    return 
+def calculateCost(scooterID):
+    cost = 0
+    currentCoords = locations[scooterID]
 
-def scooterHandler():
+    for zone in zoneMap:
+        if zone[1][0] < currentCoords[0] and currentCoords[0] < zone[1][1]:
+            if zone[2][0] < currentCoords[1] and currentCoords[1] < zone[2][1]:
+                if zone[0] == "yellow":
+                    cost = yellowZoneFee
+                elif zone[0] == "red":
+                    cost = -1
+                break
+
+    return cost
+
+def updateLocations():
     while True:
         locations = scooterManager.get_locations()
         sleep(getLocationsInterval)
 
 if __name__ == '__main__':
 
-    mqttThread = threading.Thread(target=scooterHandler)
-    mqttThread.start()
+    locationsThread = threading.Thread(target=updateLocations)
+    locationsThread.start()
 
     print(scooterManager.get_locations())
 

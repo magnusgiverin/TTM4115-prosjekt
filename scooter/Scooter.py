@@ -11,15 +11,17 @@ import signal
 import RPi.GPIO as GPIO  # For button handling
 import sys
 
+# MQTT_BROKER = 'mqtt20.iik.ntnu.no'
+# MQTT_PORT = 1883
 
-BROKER = ""
+# MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
+
+MQTT_BROKER = "mqtt20.iik.ntnu.no"
 PORT = 8883 # TLS port
 
 TOPIC_COORDINATES = "scooter/coordinates"
-TOPIC_LOCK = "scooter/lock"
-TOPIC_UNLOCK = "scooter/unlock"
 
-sense= SenseHat()
+sense = SenseHat() # må kanskje fjernes
 
 
 FIRST_RECONNECT_DELAY = 1
@@ -35,10 +37,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 class Scooter:
     
-    def __init__(self, id: int):
+    def __init__(self, id: int, client: object):
         self.id = id
         self.is_locked = True
-        self.client = mqtt.Client()
+        self.client = client
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
@@ -48,7 +50,7 @@ class Scooter:
         
         self.zone = 0
         
-         # Button setup
+        # Button setup
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=self.change_zone, bouncetime=300)
@@ -60,42 +62,24 @@ class Scooter:
         self.client.connect(BROKER, PORT, 60)
         
         
-        """"
-        self.machine = Machine(name="scooter_machine", transitions=[
-            {"source": "initial", "target": "locked"},
-            {"trigger": "unlock", "source": "locked", "target": "unlocked"},
-            {"trigger": "lock", "source": "unlocked", "target": "locked"},
-        ], obj=self)
-        
-        self.driver = Driver()
-        self.driver.add_machine(self.machine)
-        self.driver.start() 
-
-        """
-
-        self.machine= Machine(
+        self.stm= Machine(
 
             name="Scooter_machine",
             
             states=[
 
-                {"name": "locked", "entry": "self.lock_scooter()", "exit": "self.send_status()"},
-                {"name": "unlocked", "entry": "self.unlock_scooter()", "exit": "self.send_status()"},
+                {"name": "locked", "entry": "lock_scooter()", "exit": "send_status()"},
+                {"name": "unlocked", "entry": "unlock_scooter()", "exit": "send_status()"},
 
             ],
             transitions=[
                 {"source": "initial", "target": "locked"},  
                 {"trigger": "unlock", "source": "locked", "target": "unlocked"},
                 {"trigger": "lock", "source": "unlocked", "target": "locked"},
-    ],
-
-    obj=self,
-
-            
-    )
-
-
+            ],obj=self,)
+        
     def change_zone(self, event):
+        
         if event.action == "pressed":
             if event.direction == "up":
                 self.zone = (self.zone + 1) % 3  
@@ -104,9 +88,35 @@ class Scooter:
         
         print(f"Selected Zone: {self.zone}")
         self.client.publish(TOPIC_COORDINATES, str(self.zone))
-
     
+    
+    def lock_scooter(self):
+        logging.info("Scooter is now locked.")
+        self.is_locked = True
+        self.sense.clear((255, 0, 0)) # Red for locked
         
+        message = {
+            "type": "reponse",
+            "command": "lock",
+            "id": self.id
+        }        
+        
+        self.component.mqtt_client.publish(MQTT_TOPIC_OUTPUT, json.dumps(message))
+        
+    def unlock_scooter(self):
+        logging.info("Scooter is now unlocked.")
+        self.is_locked = False
+        self.sense.clear((0, 255, 0))  # Green for unlocked
+        
+        message = {
+            "type": "reponse",
+            "command": "unlock",
+            "id": self.id
+        }        
+        
+        self.component.mqtt_client.publish(MQTT_TOPIC_OUTPUT, json.dumps(message))
+    
+    
     def shutdown(self, signum, frame):
         logging.info("Shutting down gracefully...")
         self.client.disconnect()
@@ -145,15 +155,6 @@ class Scooter:
             reconnect_count += 1
         logging.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
 
-    def on_message(self, client, userdata, msg):
-        if msg.topic == TOPIC_LOCK:
-            logging.info("Scooter locked.")
-            self.driver.send("lock", "scooter_machine")
-            self.sense.clear((255, 0, 0))  # Red for locked
-        elif msg.topic == TOPIC_UNLOCK:
-            logging.info("Scooter unlocked.")
-            self.driver.send("unlock", "scooter_machine")
-            self.sense.clear((0, 255, 0)) # Green for unlocked
 
     def send_json(self):
         
@@ -164,19 +165,16 @@ class Scooter:
         # Sense HAT color for coordinate zones
         if self.zone == 0:
             coordinates = (0.0,0.0)
-            self.sense.clear((255, 0, 0))  # Red for zone 0
         elif self.zone == 1:
             coordinates = (50.0, 50.0)
-            self.sense.clear((255, 255, 0))  # Yellow for zone 1
         elif self.zone == 2:
             coordinates = (100.0, 100.0)
-            self.sense.clear((0, 255, 0))  # Green for zone 2
             
         timestamp = datetime.now().isoformat()
             
         message = {
             "command": "location_ping",
-            "coordinatess": coordinates,
+            "coordinates": coordinates,
             "timestamp": timestamp,
             "id": self.id
         }
@@ -187,17 +185,20 @@ class Scooter:
 
         
         #coordinates = random.choice([0, 1, 2])# Random zone selection (red, yellow, green), change later
-        print(f"Sending coordinates: {coordinates}")
+        
+        logging.info(f"Sending coordinates: {coordinates}")
         self.client.publish(TOPIC_COORDINATES, coordinates)    
     
     
     def run(self):
         try:
             while True:
-                self.send_coordinates()
+                self.send_json()
                 time.sleep(5)
-                for event in self.sense.stick.get_events():
+
+                for event in self.sense.stick.get_events(): 
                     self.change_zone(event)
+                    
         except Exception as e:
             logging.error(f"Error in run loop: {e}")
             self.shutdown(None, None)

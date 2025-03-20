@@ -2,8 +2,15 @@ flask
 paho-mqtt
 stmpy
 logging
-ssl
 datetime
 sense_hat
 signal
 sys
+time
+json
+random
+requests
+logging
+datetime
+signal
+sense-hat
