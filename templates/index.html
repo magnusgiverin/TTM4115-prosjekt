@@ -18,6 +18,7 @@
             object-fit: contain;
             max-height: 100vh;
             display: block;
+            z-index: 0;
         }
         .marker {
             position: absolute;
@@ -25,6 +26,7 @@
             background: green;
             border-radius: 50%;
             transform: translate(-50%, -50%);
+            z-index: 10;
         }
         .button-container {
             margin-top: auto;
@@ -39,12 +41,12 @@
             border-radius: 5px;
         }
         .markerBox {
+            z-index: 0;
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none; /* Prevent interference with clicks */
         }
     </style>
 </head>
@@ -115,10 +117,14 @@
                 div.classList.add("marker");
                 div.style.left = x + "%";
                 div.style.top = y + "%";
-                div.onclick = () => console.log("aaaa");
+                // div.onclick = () => console.log("aaaa");
+                div.addEventListener("click", () => {
+                    console.log("Marker clicked: " + key); // or any other data you want to log
+                });
                 markerContainer.appendChild(div);
             });
 		}
+        
 
         function createZone(c1, c2, color) {
             x1 = c1[0];
