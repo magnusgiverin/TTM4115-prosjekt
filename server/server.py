@@ -30,11 +30,9 @@ def guiClick():
         case "getLocations":
             return returnLocations()
         case "unlock":
-            scooterManager.on_frontend_command(command, scooterID)
-            return
+            return scooterManager.on_frontend_command(command, scooterID)
         case "lock":
-            scooterManager.on_frontend_command(command, scooterID)
-            return
+            return scooterManager.on_frontend_command(command, scooterID)
         case "getPrice":
             return calculateCost(scooterID)
 

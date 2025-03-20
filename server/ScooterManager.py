@@ -47,10 +47,7 @@ class ScooterManagerComponent:
 
     def on_connect(self, client, userdata, flags, rc):
         # we just log that we are connected
-        self._logger.debug('MQTT connected to {}'.format(client))
-
-    def on_frontend_command(self, command, scooter_id):
-        self.stm_driver.send(command, scooter_id)
+        self._logger.debug('MQTT connected to {}'
         
     def get_locations(self):
         return self.locations
@@ -85,15 +82,22 @@ class ScooterManagerComponent:
             return
         
         command = payload.get('command')
+        type = payload.get('type')
         
-        if command == "coordinates":
+        if command == "location_ping":
             id = payload.get('scooter_id')
-            coords = payload.get('coords')
+            coordinates = payload.get('coordinates')
             timestamp = payload.get('timestamp')
             
-            if id and coords and timestamp:
-                self.locations[id] = (id, coords, timestamp)
-                    
+            if id and coordinates and timestamp:
+                self.locations[id] = (id, coordinates, timestamp)
+        
+        if type == "response":
+            if command == "lock" or command == "unlock":
+                id = payload.get('scooter_id')
+                coordinates = payload.get('coordinates')
+                
+                
         # if command == 'new_timer':
         #     name = payload.get('name')
         #     duration = payload.get('duration')
