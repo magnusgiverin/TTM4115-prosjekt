@@ -1,3 +1,4 @@
+import uuid
 import paho.mqtt.client as mqtt
 import random
 from stmpy import Machine, Driver
@@ -6,19 +7,19 @@ import time
 import ssl
 import json
 from datetime import datetime
+#from sense_hat import SenseHat
+
 """
 from sense_hat import SenseHat
 import RPi.GPIO as GPIO  # For button handling
 """
 import signal
 import sys
+import pickle
 
-# MQTT_BROKER = 'mqtt20.iik.ntnu.no'
-# MQTT_PORT = 1883
+
 
 # MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
-
-TOPIC_COORDINATES = 'ttm4115/team_4_project/command'
 
 #sense = SenseHat() # må kanskje fjernes
 
@@ -34,11 +35,19 @@ BUTTON_PIN = 17
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
 class Scooter:
-    def __init__(self, id: int, client: object, coordinates: (float)):
-        self.id = id
+    def __init__(self):
+        self.id = None
+        self.coordinates = [random.randint(0, 100), random.randint(0, 100)]
         self.is_locked = True
-        self.client = client
-        self.coordinates = coordinates
+        #self.sense.stick.direction_any = self.joystick_moved
+        self.sensitivity = 10
+        self.unlock_time = None
+        self.stm_driver = Driver()
+        
+        self.MQTT_BROKER = 'mqtt20.iik.ntnu.no'
+        self.MQTT_PORT = 1883
+        self.MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
+
         # self.client.on_connect = self.on_connect
         # self.client.on_disconnect = self.on_disconnect
         # self.client.on_message = self.on_message
@@ -46,14 +55,54 @@ class Scooter:
         
         #self.sense = SenseHat()
         
-        self.zone = None
+        #self.zone = None
         """
         # Button setup
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=self.change_zone, bouncetime=300)
         """
+        
+        self._logger = logging.getLogger(__name__)
+        
+        self.mqtt_client = mqtt.Client()
+        
+        # callback methods
+        self.mqtt_client.on_connect = self.on_connect
+        self.mqtt_client.on_message = self.on_message
+        
+        # Connect to the broker
+        self.mqtt_client.connect(self.MQTT_BROKER, self.MQTT_PORT)
+        
+        # subscribe to proper topic(s) of your choice
+        self.mqtt_client.subscribe(self.MQTT_TOPIC_INPUT)
+        
+        # start the internal loop to process MQTT messages
+        self.mqtt_client.loop_start()
 
+        self.make_stm()
+        
+        self.tag = str(uuid.uuid4())
+        self.user_id = None
+        self.transaction_id = None
+        
+        try:
+            message = {
+                "command": "init_scooter",
+                "type": "request",
+                "tag": self.tag,
+            }
+            
+            logging.info(f"Sending init JSON: {message}")
+
+            self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+            
+        except Exception as e:
+            logging.info(f'Init error {e}')
+        
+
+    def make_stm(self):
+        
         t1 = {
             "source": "initial", 
             "target": "locked", 
@@ -85,93 +134,124 @@ class Scooter:
             "trigger": "status_timer", 
             "source": "unlocked", 
             "target": "unlocked", 
-            'effect':"send_status()"
+            'effect': "send_status()"
         }
         
-        self.stm = Machine(name=f"scooter_{self.id}", transitions=[t1, t2, t3, t4, t5], obj=self)
-                
-        """        
-        self.stm= Machine(
-
-            name=f"scooter_{self.id}",
+        t6 = {
+            "trigger": "unlock", 
+            "source": "unlocked", 
+            "target": "unlocked", 
+            'effect': "send_error()"
+        }
+        
+        t7 = {
+            "trigger": "lock", 
+            "source": "locked", 
+            "target": "locked", 
+            'effect': "send_error()"
+        }
+        
+        self.stm = Machine(name=f"scooter_{self.id}", transitions=[t1, t2, t3, t4, t5, t6, t7], obj=self)
+        self.stm_driver.add_machine(self.stm)
+        self.stm_driver.start()
+        
+    def on_connect(self, client, userdata, flags, rc):
+        # we just log that we are connected
+        self._logger.debug('MQTT connected to {}'.format(client))
+        
+    def on_message(self, client, userdata, msg):
+        payload = json.loads(msg.payload.decode())
+        
+        type = payload.get("type")
+        
+        if(type == "response" and payload.get("command") == "init_scooter"):
+            tag = payload.get("tag")
+            if(self.tag == tag):
+                self.id = payload.get("scooter_id")
+                logging.info(f"Initialised tag: {self.tag}")
             
-            states=[
-
-                {"name": "locked", "entry": "lock_scooter()", "exit": "send_status()"},
-                {"name": "unlocked", "entry": "unlock_scooter()", "exit": "send_status()"},
-
-            ],
-            transitions=[
-                {"source": "initial", "target": "locked"},  
-                {"trigger": "unlock", "source": "locked", "target": "unlocked"},
-                {"trigger": "lock", "source": "unlocked", "target": "locked"},
-            ],obj=self,)
-        """
+        elif(type == "request" and payload.get("command") in ["lock", "unlock"] and payload.get("scooter_id") == self.id):
+            self.transaction_id = payload.get("transaction_id")
+            self.user_id = payload.get("user_id")
+            self.stm.send(payload.get("command"))
+            
+    # def change_zone(self, event):
         
-    def change_zone(self, event):
+    #     if event.action == "pressed":
+    #         if event.direction == "up":
+    #             self.zone = (self.zone + 1) % 3  
+    #         elif event.direction == "down":
+    #             self.zone = (self.zone - 1) % 3  
         
-        if event.action == "pressed":
-            if event.direction == "up":
-                self.zone = (self.zone + 1) % 3  
-            elif event.direction == "down":
-                self.zone = (self.zone - 1) % 3  
-        
-        print(f"Selected Zone: {self.zone}")
-        self.client.mqtt_client.publish(TOPIC_COORDINATES, str(self.zone))
+    #     print(f"Selected Zone: {self.zone}")
+    #     self.client.mqtt_client.publish(self.topic_coordinates, str(self.zone))
     
     def status_timer(self):
         self.stm.start_timer("status_timer", 5000)
         
     def lock_scooter(self):
-        try:
-            logging.info("Scooter is now locked.")
-            self.is_locked = True
-            #self.sense.clear((255, 0, 0)) # Red for locked
-            
-            message = {
-                "type": "response",
-                "command": "lock",
-                "scooter_id": self.id,
-                "coordinates": self.coordinates
-            }        
-            
-            self.client.mqtt_client.publish(TOPIC_COORDINATES, json.dumps(message))
+        logging.info("Scooter is now locked.")
+        self.is_locked = True
+        # Timer stop. Send timer
+        if self.unlock_time is not None:
+            duration = int(time.time() - self.unlock_time)
+            self.unlock_time = None
+        else:
+            duration = 0
         
-        except Exception as e:
-            message = {
-                "type": "response",
-                "command": "error",
-                "crash": True,
-                "crash_message": "lock",
-                "scooter_id": self.id
-            } 
-            self.client.mqtt_client.publish(TOPIC_COORDINATES, json.dumps(message))
+        #self.sense_light()
+        #self.sense.clear((255, 0, 0)) # Red for locked
         
+        message = {
+            "type": "response",
+            "command": "lock",
+            "scooter_id": self.id,
+            "coordinates": self.coordinates,
+            "timer": duration,
+            "transaction_id": self.transaction_id,
+        }        
+      
+        
+        self.transaction_id = None
+        self.user_id = None
+        
+        self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+    
     def unlock_scooter(self):
-        try:
-            logging.info("Scooter is now unlocked.")
-            self.is_locked = False
-            #self.sense.clear((0, 255, 0))  # Green for unlocked
-            
-            message = {
-                "type": "response",
-                "command": "unlock",
-                "scooter_id": self.id,
-                "coordinates": self.coordinates
-            }        
-            
-            self.client.mqtt_client.publish(TOPIC_COORDINATES, json.dumps(message))
+        logging.info("Scooter is now unlocked.")
+        self.is_locked = False
+        # Timer start
+        self.unlock_time = time.time()
+        #self.sense_light()
+        #self.sense.clear((0, 255, 0))  # Green for unlocked
         
-        except Exception as e:
+        message = {
+            "command": "unlock",
+            "type": "response",
+            "scooter_id": self.id,
+            "coordinates": self.coordinates,
+            "transaction_id": self.transaction_id,
+        }        
+        
+        self.transaction_id = None
+        self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+        
+    def send_error(self):
+        logging.info("Invalid command recieved.")
+        
+        if(self.is_locked):
             message = {
-                "type": "response",
                 "command": "error",
-                "crash": True,
-                "crash_message": "unlock",
-                "scooter_id": self.id
-            } 
-            self.client.mqtt_client.publish(TOPIC_COORDINATES, json.dumps(message))
-#    
+                "message": f"Trying to lock a locked scooter"
+            }
+        else: 
+            message = {
+                "command": "error",
+                "message": f"Trying to unlock an unlocked scooter"
+            }
+        
+        self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+               
 #     def shutdown(self, signum, frame):
 #         logging.info("Shutting down gracefully...")
 #         self.client.disconnect()
@@ -179,16 +259,6 @@ class Scooter:
 #         #self.sense.clear()  # Turn off LED display
 #         GPIO.cleanup()  # Cleanup GPIO on shutdown
 #         sys.exit(0)
-
-#     def on_connect(self, client, userdata, flags, rc):
-#         logging.info(f"Connected with result code {rc}")
-#         if rc == 0:
-#             logging.info("Successfully connected to broker.")
-#         else:
-#             logging.error(f"Failed to connect. Code {rc}")
-            
-#         client.subscribe(TOPIC_COORDINATES)
-#         client.subscribe(TOPIC_COORDINATES)
         
 
 #     def on_disconnect(self, client, userdata, rc):
@@ -209,8 +279,6 @@ class Scooter:
 #             reconnect_delay = min(reconnect_delay, MAX_RECONNECT_DELAY)
 #             reconnect_count += 1
 #         logging.info("Reconnect failed after %s attempts. Exiting...", reconnect_count)
-
-# 
     
     def send_status(self):
         
@@ -220,23 +288,15 @@ class Scooter:
         """
         
         self.stm.start_timer("status_timer", 5000)
-        
-        # Sense HAT color for coordinate zones
-        if self.zone == 0:
-            self.coordinates = (0.0,0.0)
-        elif self.zone == 1:
-            self.coordinates = (50.0, 50.0)
-        elif self.zone == 2:
-            self.coordinates = (100.0, 100.0)
             
         timestamp = int(datetime.now().timestamp())
             
         message = {
-            "command": "location_ping",
-            "coordinates": self.coordinates,
+            "command": "ping",
+            "data": json.dumps({"coordinates": self.coordinates, "locked": self.is_locked, "user_id": self.user_id}),
             "timestamp": timestamp,
             "scooter_id": self.id,
         }
 
-        logging.info(f"Sending coordinate JSON: {message}")
-        self.client.mqtt_client.publish(TOPIC_COORDINATES, json.dumps(message))
+        logging.info(f"Sending data JSON for: {self.id}")
+        self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))

@@ -1,4 +1,5 @@
 import json
+import uuid
 import stmpy
 import paho.mqtt.client as mqtt
 import logging
@@ -7,13 +8,11 @@ import os
 import random
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scooter'))
-from Scooter import Scooter
 
 MQTT_BROKER = 'mqtt20.iik.ntnu.no'
 MQTT_PORT = 1883
 
 MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
-MQTT_TOPIC_OUTPUT = 'ttm4115/team_4_project/answer'
 
 class ScooterManagerComponent:
     """
@@ -50,18 +49,25 @@ class ScooterManagerComponent:
         # we just log that we are connected
         self._logger.debug('MQTT connected to {}'.format(client))
         
-    def get_locations(self):
-        return self.locations
+    def get_data(self):
+        return self.data
     
-    def get_status(self, scooter_id, command):
-        if((scooter_id, command) in self.status.keys()):
-            return self.status[(scooter_id, command)]
+    def get_status(self, transaction_id):
+        if(transaction_id in self.status.keys()):
+            return self.status[transaction_id]
         else:
             None
     
-    def on_frontend_command(self, command, scooter_id):
+    def on_frontend_command(self, command, scooter_id, transaction_id, user_id):
         if command == "lock" or command == "unlock":
-            self.stm_driver.send(command, f"scooter_{scooter_id}")
+            message = {
+                "command": command,
+                "type": "request",
+                "scooter_id": scooter_id,
+                "transaction_id": transaction_id,
+                "user_id": user_id,
+            }
+            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
         else:
             self._logger.error('Unknown command received from frontend.')
         
@@ -94,59 +100,38 @@ class ScooterManagerComponent:
         command = payload.get('command')
         type = payload.get('type')
                 
-        if command == "location_ping":
+        if command == "ping":
             id = payload.get('scooter_id')
-            coordinates = payload.get('coordinates')
+            data = json.loads(payload.get('data'))
             timestamp = payload.get('timestamp')
             
-            self.locations[id] = (coordinates, timestamp)
+            self.data[id] = (data, timestamp)
         
         elif type == "response":
             if command == "lock" or command == "unlock":
                 id = payload.get('scooter_id')
-                coordinates = payload.get('coordinates')
+                transaction_id = payload.get('transaction_id')
                 
-                self.status[(id, command)] = True
+                self.status[transaction_id] = True
             
             if command == "error":
                 id = payload.get('scooter_id')
                 
-                self.status[(id, command)] = False
+                self.status[transaction_id] = False
                 
-        # if command == 'new_timer':
-        #     name = payload.get('name')
-        #     duration = payload.get('duration')
-        #     if name and duration:
-        #         timer_logic = Scooter(name, duration, self)
-        #         self.stm_driver.add_machine(timer_logic.stm)
-        #     else:
-        #         self._logger.error('Invalid payload for new_timer command.')
-                
-        # elif command == 'status_all_timers':
-        #     for key in self.stm_driver._stms_by_id:
-        #         stm = self.stm_driver._stms_by_id[key]._obj
-        #         self.stm_driver.send('status_single_timer', stm.name)
-                
-        # elif command == 'status_single_timer':
-        #     # handle status_single_timer command
-        #     name = payload.get('name')
-        #     if name:
-        #         self.stm_driver.send('status_single_timer', name)
-        #     else:
-        #         self._logger.error('Invalid payload for status_single_timer command.')
-        
-        # elif command == 'cancel_timer':
-        #     name = payload.get('name')
-        #     if name:
-        #         self.stm_driver.send('timer_stop', name)
-                
-        else:
-            self._logger.error(f'Unknown command received. {payload}')
-        
-        # TODO extract command
-
-        # TODO determine what to do
-
+        elif command == 'init_scooter' and type == 'request':
+            tag = payload.get("tag")
+            scooter_id = str(uuid.uuid4())
+            message = {
+                "command": "init_scooter",
+                "type": "response",
+                "tag": tag,
+                "scooter_id": scooter_id,
+            }
+            
+            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
+            self.ids.add(scooter_id)
+            
     def __init__(self):
         """
         Start the component.
@@ -188,26 +173,21 @@ class ScooterManagerComponent:
         self.mqtt_client.loop_start()
 
         # we start the stmpy driver, without any state machines for now
-        self.stm_driver = stmpy.Driver()
-        self.stm_driver.start(keep_active=True)
         self._logger.debug('Component initialization finished')
 
         # create some scooters as stms
-        self.locations = {}
-        for i in range(3):
-            coordinates = (random.randint(0, 100), random.randint(0, 100))
-            scooter = Scooter(i, self, coordinates)
-            self.stm_driver.add_machine(scooter.stm)
+        self.data = {}
             
         # response status
         self.status = {}
 
+        # handle initialisations
+        self.handled = set()
+        self.ids = set()
+        
     def stop(self):
         """
         Stop the component.
         """
         # stop the MQTT client
         self.mqtt_client.loop_stop()
-
-        # stop the state machine Driver
-        self.stm_driver.stop()

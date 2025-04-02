@@ -48,6 +48,12 @@
             width: 100%;
             height: 100%;
         }
+		.selectedScooter {
+            width: 30px; height: 30px;
+		}
+        .unlocked {
+			background: purple;
+        }
     </style>
 </head>
 
@@ -56,16 +62,22 @@
         <img id="map" src="{{ url_for('static', filename='images/trd_map.png') }}" class="image">
         <div id="markers" class="markerBox"></div>
     </div>
+    <div id="statusPopup">
+    </div>
     <div class="button-container">
         <button id="unlock">Unlock</button>
         <button id="lock">Lock</button>
-        <button id="getLocations">getLocations</button>
-        <button id="getPrice">getPrice</button>
+        <!--<button id="getLocations">getLocations</button>-->
+        <!--<button id="getPrice">getPrice</button>-->
     </div>
     <script>
-		var updatePosIntervalMS = 5000;
+		window.userID = {{ userID | tojson }};
+    </script>
+    <script>
+		var updatePosIntervalMS = 20;
+		var getPositionsIntervalMS = 300;
 		var updateZoneIntervalMS = 1000; // TODO change
-		var selectedScooterId;
+		var selectedScooterId = -1;
 
         var zones;
         var markers;
@@ -73,6 +85,9 @@
         const markerContainer = document.getElementById("markers");
 
 		async function sendCommand(action, scooterID) {
+			// if (scooterID < 0) { // if no scooter is selected
+			// 	return;
+			// }
 			try {
 				let response = await fetch("/guiClick", {
 					method: "POST",
@@ -80,8 +95,9 @@
 						"Content-Type": "application/json"
 					},
 					body: JSON.stringify({
-						command: action,
-						scooterID: scooterID
+						"command": action,
+						"scooterID": scooterID.toString(),
+						"userID": window.userID
 					})
 				});
 				if (response.ok) {
@@ -93,38 +109,40 @@
 				console.error("Error sending request:", error);
 			}
 		}
-
-        function selectScooter(id) {
-            console.log(id);
+        async function getPositions() {
+            markers = await sendCommand("getLocations", -1);
         }
 
-		async function updatePositions() {
-			let markers = await sendCommand("getLocations", 0);
-			console.log(markers);
-            // markerContainer.innerHTML = ""; // Clear previous markers
+        async function updatePositions() {
             document.querySelectorAll('.markerBox .marker').forEach(el => el.remove());
-            // Object.values(markers).forEach(([position, _]) => {
-            //     const [x, y] = position; // Extract (x, y) from ((x, y), extraData)
-            //     const div = document.createElement("div");
-            //     div.classList.add("marker");
-            //     div.style.left = x + "%";
-            //     div.style.top = y + "%";
-            //     // div.onclick = () => selectScooter(key);
-            //     markerContainer.appendChild(div);
-            Object.entries(markers).forEach(([key, [position, _]]) => {
-                const [x, y] = position; // Extract (x, y) from ((x, y), extraData)
+            
+            Object.entries(markers).forEach(([key, [{ coordinates: [x, y], locked, user_id }, _]]) => {
                 const div = document.createElement("div");
-                div.classList.add("marker");
-                div.style.left = x + "%";
-                div.style.top = y + "%";
-                // div.onclick = () => console.log("aaaa");
-                div.addEventListener("click", () => {
-                    console.log("Marker clicked: " + key); // or any other data you want to log
-                });
-                markerContainer.appendChild(div);
+                if (locked || user_id == window.userID) {
+                    if (user_id == window.userID) {
+                        div.classList.add("unlocked");
+                    }
+
+                    div.classList.add("marker");
+                    if (key == selectedScooterId) div.classList.add("selectedScooter")
+                    
+                    div.style.left = x + "%";
+                    div.style.top = y + "%";
+                    
+                    div.id = key;
+                    div.addEventListener("click", () => clickOnScooter(key));
+                    
+                    markerContainer.appendChild(div);
+                }
             });
-		}
-        
+        }
+
+        function clickOnScooter(id) {
+            selectedScooterId = id;
+            document.querySelectorAll('.selectedScooter') 
+                    .forEach(el => el.classList.remove('selectedScooter'));
+            document.getElementById(id).classList.add('selectedScooter');
+        }
 
         function createZone(c1, c2, color) {
             x1 = c1[0];
@@ -138,7 +156,7 @@
             zone.style.top = Math.min(y1, y2) + "%";
             zone.style.width = Math.abs(x2 - x1) + "%";
             zone.style.height = Math.abs(y2 - y1) + "%";
-            zone.style.border = "2px solid " + color; // zone outline
+            //zone.style.border = "2px solid " + color; // zone outline
             zone.style.background = color; // Semi-transparent fill
             zone.style.opacity = 0.5;
             markerContainer.appendChild(zone); // Append to the document
@@ -167,20 +185,42 @@
 			}
 		}
 
+		function statusLock(status) {
+			if (status == 1) {
+				statusPopup.innerText = "Locked successfully!";
+			} else if (status == 0) {
+				statusPopup.innerText = "Try again";
+			}
+		}
+
+		function statusUnlock(status) {
+			if (status == 1) {
+				statusPopup.innerText = "Unlocked successfully!";
+			} else if (status == 0) {
+				statusPopup.innerText = "Try again";
+			}
+		}
+
+		const statusPopup = document.getElementById("statusPopup");
 		const lockButton = document.getElementById("lock");
 		const unlockButton = document.getElementById("unlock");
-		const getPriceButton = document.getElementById("getPrice");
-		const getLocationsButton = document.getElementById("getLocations");
+		//const getPriceButton = document.getElementById("getPrice");
+		//const getLocationsButton = document.getElementById("getLocations");
 
-		lockButton.addEventListener("click", () => sendCommand("lock", 0));
-    	unlockButton.addEventListener("click", () => sendCommand("unlock", 0));
-		getPriceButton.addEventListener("click", () => sendCommand("getPrice", 0));
-    	getLocationsButton.addEventListener("click", () => sendCommand("getLocations", 0));
+		lockButton.addEventListener("click", () => 
+			sendCommand("lock", selectedScooterId).then(statusLock));
+    	unlockButton.addEventListener("click", () =>
+			sendCommand("unlock", selectedScooterId).then(statusUnlock));
+		//getPriceButton.addEventListener("click", () => sendCommand("getPrice", selectedScooterId));
+		//getLocationsButton.addEventListener("click", () => sendCommand("getLocations", selectedScooterId));
 
+		setInterval(() => getPositions(), getPositionsIntervalMS);
 		setInterval(() => updatePositions(), updatePosIntervalMS);
 		setInterval(() => updateZones(), updateZoneIntervalMS);
+        getPositions();
         updatePositions();
         updateZones();
     </script>
+	<!--<script type="module" src="../../static/TODO.js"></script>-->
 </body>
 </html>
