@@ -104,15 +104,17 @@ class ScooterManagerComponent:
         self._logger.debug('MQTT connected to {}'.format(client))
         
     def get_data(self):
-        # Check if any entries in self.data have a timestamp older than their ping_interval
+        # Check if any entries in self.data have a timestamp within their ping_interval
         timestamp = int(datetime.now().timestamp())
         
+        result = {}
+        
         for key, value in self.data.items():
-            if timestamp - value[1] > value[2]:
-                # If the scooter is offline, remove it from the data
-                self.data.pop(key)
-                self._logger.debug(f"Removed scooter {key} from data due to offline status.")
-                continue
+            if timestamp - value[1] <= value[2]:
+                # Only include scooters with a recent timestamp within the interval
+                result[key] = (value[0], value[1])
+        
+        return result
             
     def get_status(self, transaction_id):
         if(transaction_id in self.status.keys()):

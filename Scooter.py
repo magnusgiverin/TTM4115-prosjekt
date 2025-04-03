@@ -302,8 +302,6 @@ class Scooter:
             "ping_interval": self.ping_interval,
         }
 
-        logging.info(f"Sending data JSON for: {self.ping_interval}")
-
         logging.info(f"Sending data JSON for: {self.id}")
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
 
