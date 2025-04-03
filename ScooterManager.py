@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import uuid
 import stmpy
@@ -44,94 +45,7 @@ class ScooterManagerComponent:
             "scooter_id": int,
         }
     """
-
-    def on_connect(self, client, userdata, flags, rc):
-        # we just log that we are connected
-        self._logger.debug('MQTT connected to {}'.format(client))
-        
-    def get_data(self):
-        return self.data
     
-    def get_status(self, transaction_id):
-        if(transaction_id in self.status.keys()):
-            return self.status[transaction_id]
-        else:
-            None
-    
-    def on_frontend_command(self, command, scooter_id, transaction_id, user_id):
-        if command == "lock" or command == "unlock":
-            message = {
-                "command": command,
-                "type": "request",
-                "scooter_id": scooter_id,
-                "transaction_id": transaction_id,
-                "user_id": user_id,
-            }
-            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
-        else:
-            self._logger.error('Unknown command received from frontend.')
-        
-    def on_message(self, client, userdata, msg):
-        """
-        Processes incoming MQTT messages.
-
-        We assume the payload of all received MQTT messages is an UTF-8 encoded
-        string, which is formatted as a JSON object. The JSON object contains
-        a field called `command` which identifies what the message should achieve.
-
-        As a reaction to a received message, we can for example do the following:
-
-        * create a new state machine instance to handle the incoming messages,
-        * route the message to an existing state machine session,
-        * handle the message right here,
-        * throw the message away.
-
-        """
-        self._logger.debug('Incoming message to topic {}'.format(msg.topic))
-
-        # TODO unwrap JSON-encoded payload
-    
-        try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-        except Exception as err:
-            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
-            return
-        
-        command = payload.get('command')
-        type = payload.get('type')
-                
-        if command == "ping":
-            id = payload.get('scooter_id')
-            data = json.loads(payload.get('data'))
-            timestamp = payload.get('timestamp')
-            
-            self.data[id] = (data, timestamp)
-        
-        elif type == "response":
-            if command == "lock" or command == "unlock":
-                id = payload.get('scooter_id')
-                transaction_id = payload.get('transaction_id')
-                
-                self.status[transaction_id] = True
-            
-            if command == "error":
-                id = payload.get('scooter_id')
-                
-                self.status[transaction_id] = False
-                
-        elif command == 'init_scooter' and type == 'request':
-            tag = payload.get("tag")
-            scooter_id = str(uuid.uuid4())
-            message = {
-                "command": "init_scooter",
-                "type": "response",
-                "tag": tag,
-                "scooter_id": scooter_id,
-            }
-            
-            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
-            self.ids.add(scooter_id)
-            
     def __init__(self):
         """
         Start the component.
@@ -184,6 +98,102 @@ class ScooterManagerComponent:
         # handle initialisations
         self.handled = set()
         self.ids = set()
+
+    def on_connect(self, client, userdata, flags, rc):
+        # we just log that we are connected
+        self._logger.debug('MQTT connected to {}'.format(client))
+        
+    def get_data(self):
+        # Check if any entries in self.data have a timestamp older than their ping_interval
+        timestamp = int(datetime.now().timestamp())
+        
+        for key, value in self.data.items():
+            if timestamp - value[1] > value[2]:
+                # If the scooter is offline, remove it from the data
+                self.data.pop(key)
+                self._logger.debug(f"Removed scooter {key} from data due to offline status.")
+                continue
+            
+    def get_status(self, transaction_id):
+        if(transaction_id in self.status.keys()):
+            return self.status[transaction_id]
+        else:
+            None
+    
+    def on_frontend_command(self, command, scooter_id, transaction_id, user_id):
+        if command == "lock" or command == "unlock":
+            message = {
+                "command": command,
+                "type": "request",
+                "scooter_id": scooter_id,
+                "transaction_id": transaction_id,
+                "user_id": user_id,
+            }
+            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
+        else:
+            self._logger.error('Unknown command received from frontend.')
+        
+    def on_message(self, client, userdata, msg):
+        """
+        Processes incoming MQTT messages.
+
+        We assume the payload of all received MQTT messages is an UTF-8 encoded
+        string, which is formatted as a JSON object. The JSON object contains
+        a field called `command` which identifies what the message should achieve.
+
+        As a reaction to a received message, we can for example do the following:
+
+        * create a new state machine instance to handle the incoming messages,
+        * route the message to an existing state machine session,
+        * handle the message right here,
+        * throw the message away.
+
+        """
+        self._logger.debug('Incoming message to topic {}'.format(msg.topic))
+
+        # TODO unwrap JSON-encoded payload
+    
+        try:
+            payload = json.loads(msg.payload.decode("utf-8"))
+        except Exception as err:
+            self._logger.error('Message sent to topic {} had no valid JSON. Message ignored. {}'.format(msg.topic, err))
+            return
+        
+        command = payload.get('command')
+        type = payload.get('type')
+                
+        if command == "ping":
+            id = payload.get('scooter_id')
+            data = json.loads(payload.get('data'))
+            timestamp = payload.get('timestamp')
+            ping_interval = payload.get('ping_interval')
+            
+            self.data[id] = (data, timestamp, ping_interval)
+        
+        elif type == "response":
+            if command == "lock" or command == "unlock":
+                id = payload.get('scooter_id')
+                transaction_id = payload.get('transaction_id')
+                
+                self.status[transaction_id] = True
+            
+            if command == "error":
+                id = payload.get('scooter_id')
+                
+                self.status[transaction_id] = False
+                
+        elif command == 'init_scooter' and type == 'request':
+            tag = payload.get("tag")
+            scooter_id = str(uuid.uuid4())
+            message = {
+                "command": "init_scooter",
+                "type": "response",
+                "tag": tag,
+                "scooter_id": scooter_id,
+            }
+            
+            self.mqtt_client.publish(MQTT_TOPIC_INPUT, json.dumps(message))
+            self.ids.add(scooter_id)
         
     def stop(self):
         """

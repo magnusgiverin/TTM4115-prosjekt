@@ -41,8 +41,11 @@ class Scooter:
         self.is_locked = True
         #self.sense.stick.direction_any = self.joystick_moved
         self.sensitivity = 10
+        
         self.unlock_time = None
         self.stm_driver = Driver()
+        
+        self.ping_interval = 5000
         
         self.MQTT_BROKER = 'mqtt20.iik.ntnu.no'
         self.MQTT_PORT = 1883
@@ -85,7 +88,7 @@ class Scooter:
         self.tag = str(uuid.uuid4())
         self.user_id = None
         self.transaction_id = None
-        
+                
         try:
             message = {
                 "command": "init_scooter",
@@ -187,7 +190,7 @@ class Scooter:
     #     self.client.mqtt_client.publish(self.topic_coordinates, str(self.zone))
     
     def status_timer(self):
-        self.stm.start_timer("status_timer", 5000)
+        self.stm.start_timer("status_timer", self.ping_interval)
         
     def lock_scooter(self):
         logging.info("Scooter is now locked.")
@@ -287,16 +290,19 @@ class Scooter:
         We use a button on the rasberry pi to simulate different areas/coordinates
         """
         
-        self.stm.start_timer("status_timer", 5000)
+        self.stm.start_timer("status_timer", self.ping_interval)
             
         timestamp = int(datetime.now().timestamp())
-            
+        
         message = {
             "command": "ping",
             "data": json.dumps({"coordinates": self.coordinates, "locked": self.is_locked, "user_id": self.user_id}),
             "timestamp": timestamp,
             "scooter_id": self.id,
+            "ping_interval": self.ping_interval,
         }
+
+        logging.info(f"Sending data JSON for: {self.ping_interval}")
 
         logging.info(f"Sending data JSON for: {self.id}")
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
