@@ -214,7 +214,7 @@ class Scooter:
 
         self.transaction_id = None
         self.user_id = None
-
+        
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
         self.sense.show_message("Locked")
 
@@ -225,7 +225,7 @@ class Scooter:
         self.unlock_time = time.time()
         #self.sense_light()
         #self.sense.clear((0, 255, 0))  # Green for unlocked
-
+        
         message = {
             "command": "unlock",
             "type": "response",
