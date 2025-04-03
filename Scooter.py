@@ -45,11 +45,11 @@ class Scooter:
         self.unlock_time = None
         self.stm_driver = Driver()
         
-        self.ping_interval = 5000
+        self.ping_interval = 50
         
         self.MQTT_BROKER = 'mqtt20.iik.ntnu.no'
         self.MQTT_PORT = 1883
-        self.MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
+        self.MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command/test'
 
         # self.client.on_connect = self.on_connect
         # self.client.on_disconnect = self.on_disconnect

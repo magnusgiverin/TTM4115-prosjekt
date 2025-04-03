@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'scooter'))
 MQTT_BROKER = 'mqtt20.iik.ntnu.no'
 MQTT_PORT = 1883
 
-MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
+MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command/test'
 
 class ScooterManagerComponent:
     """
@@ -110,7 +110,7 @@ class ScooterManagerComponent:
         result = {}
         
         for key, value in self.data.items():
-            if timestamp - value[1] <= value[2]:
+            if timestamp - value[1] <= value[2] // 1000:
                 # Only include scooters with a recent timestamp within the interval
                 result[key] = (value[0], value[1])
         
