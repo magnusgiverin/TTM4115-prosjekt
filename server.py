@@ -52,7 +52,7 @@ def toggleScooterStatus(command, scooterID, userID, transaction_id):
     # prevent unlocking multiple scooters
     if userID in userCurrentScooter:
         if command == "unlock":
-            return False
+            return jsonify(-1)
 
     scooterManager.on_frontend_command(command, scooterID, transaction_id, userID)
     
@@ -64,10 +64,10 @@ def toggleScooterStatus(command, scooterID, userID, transaction_id):
     elif command == "lock":
         cost = calculateCost(scooterID)
         if cost != 0 and userCurrentScooter[userID][1] == False:
-            return cost
+            return jsonify(cost)
         if userID in userCurrentScooter:
             userCurrentScooter.pop(userID)
-    return True
+    return jsonify(0)
 
 @app.route('/getLocations')
 def returnLocations():
