@@ -300,3 +300,6 @@ class Scooter:
 
         logging.info(f"Sending data JSON for: {self.id}")
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+
+if __name__ == "__main__":
+    Scooter()

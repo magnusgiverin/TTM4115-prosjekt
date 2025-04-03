@@ -13,6 +13,7 @@ locations = {69: ((45.6, 60.8), 420)}
 getLocationsInterval = 5
 yellowZoneFee = 10
 userCurrentScooter = {}
+    # userID: [ScooterID, locking confirmation]
 
 zones = [
     ["yellow", (10.5,60), (20,64)],
@@ -37,7 +38,6 @@ def guiClick():
     
     transaction_id = str(uuid.uuid4())
     
-    print("guiclick")
     match command:
         case "getLocations":
             return returnLocations()
@@ -49,10 +49,10 @@ def guiClick():
             return calculateCost(scooterID)
 
 def toggleScooterStatus(command, scooterID, userID, transaction_id):
-    # preven
+    # prevent unlocking multiple scooters
     if userID in userCurrentScooter:
         if command == "unlock":
-            return 0
+            return False
 
     scooterManager.on_frontend_command(command, scooterID, transaction_id, userID)
     
@@ -60,11 +60,14 @@ def toggleScooterStatus(command, scooterID, userID, transaction_id):
         sleep(0.1)
 
     if command == "unlock":
-        userCurrentScooter[userID] = scooterID
+        userCurrentScooter[userID] = [scooterID, False]
     elif command == "lock":
+        cost = calculateCost(scooterID)
+        if cost != 0 and userCurrentScooter[userID][1] == False:
+            return cost
         if userID in userCurrentScooter:
             userCurrentScooter.pop(userID)
-    return 1
+    return True
 
 @app.route('/getLocations')
 def returnLocations():
@@ -97,7 +100,6 @@ def updateLocations():
     while True:
         global locations
         locations = scooterManager.get_data()
-        print(locations)
         sleep(getLocationsInterval)
         
 if __name__ == '__main__':
@@ -105,26 +107,4 @@ if __name__ == '__main__':
     locationsThread = threading.Thread(target=updateLocations)
     locationsThread.start()
 
-    # scooter1 = Scooter()
-    # scooter2 = Scooter()
-    # scooter3 = Scooter()
-    # scooter4 = Scooter()
-    
     app.run(host='0.0.0.0', port=3000, debug=True, use_reloader=False)
-    
-    
-# {
-#     '14e1c411-9b87-41cd-98b4-e17748987a18': (
-#         {'coordinates': [35, 29], 'locked': True}, 1743102141
-#     ), 
-#     '77afb6e5-9a43-4b58-91c7-47ed139a430e': (
-#         {'coordinates': [50, 83], 'locked': True}, 1743102141
-#     ), 
-#     '603bc290-8cb1-41d5-ba90-f9cb5bd882dc': (
-#         {'coordinates': [8, 32], 'locked': True}, 1743102141
-#     ), 
-#     'eb4937a3-5e12-40c7-9796-7e3ef4072e64': (
-#         {'coordinates': [84, 14], 'locked': True}, 1743102141
-#     )
-# }
-

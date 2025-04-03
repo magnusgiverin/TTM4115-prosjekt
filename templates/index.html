@@ -63,6 +63,7 @@
         <div id="markers" class="markerBox"></div>
     </div>
     <div id="statusPopup">
+        test
     </div>
     <div class="button-container">
         <button id="unlock">Unlock</button>
@@ -74,9 +75,9 @@
 		window.userID = {{ userID | tojson }};
     </script>
     <script>
-		var updatePosIntervalMS = 20;
-		var getPositionsIntervalMS = 300;
-		var updateZoneIntervalMS = 1000; // TODO change
+		var updatePosIntervalMS = 1000;
+		var getPositionsIntervalMS = 1000;
+		var updateZoneIntervalMS = 10000; // TODO change
 		var selectedScooterId = -1;
 
         var zones;
@@ -131,6 +132,7 @@
                     
                     div.id = key;
                     div.addEventListener("click", () => clickOnScooter(key));
+                    div.addEventListener("mousedown", () => clickOnScooter(key));
                     
                     markerContainer.appendChild(div);
                 }
@@ -186,17 +188,19 @@
 		}
 
 		function statusLock(status) {
-			if (status == 1) {
+			if (status == 0) {
 				statusPopup.innerText = "Locked successfully!";
-			} else if (status == 0) {
+			} else if (status == -1) {
 				statusPopup.innerText = "Try again";
-			}
+			} else {
+                statusPopup.innerText = `The price of locking is ${status} kr.`
+            }
 		}
 
 		function statusUnlock(status) {
-			if (status == 1) {
+			if (status == 0) {
 				statusPopup.innerText = "Unlocked successfully!";
-			} else if (status == 0) {
+			} else if (status == -1) {
 				statusPopup.innerText = "Try again";
 			}
 		}
