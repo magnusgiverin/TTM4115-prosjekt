@@ -322,7 +322,7 @@ class Scooter:
 
     def pushed_left(self):
         if not self.is_locked:
-            self.coordinates[1] = min(self.coordinates[1] - 1, MAX_COORDS)
+            self.coordinates[0] = min(self.coordinates[0] - 1, MAX_COORDS)
             print("Moving - coordinates: ", self.coordinates)
 
 
