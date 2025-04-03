@@ -63,7 +63,6 @@
         <div id="markers" class="markerBox"></div>
     </div>
     <div id="statusPopup">
-        test
     </div>
     <div class="button-container">
         <button id="unlock">Unlock</button>
@@ -75,8 +74,8 @@
 		window.userID = {{ userID | tojson }};
     </script>
     <script>
-		var updatePosIntervalMS = 1000;
-		var getPositionsIntervalMS = 1000;
+		var updatePosIntervalMS = 50;
+		var getPositionsIntervalMS = 50;
 		var updateZoneIntervalMS = 10000; // TODO change
 		var selectedScooterId = -1;
 
@@ -188,17 +187,23 @@
 		}
 
 		function statusLock(status) {
-			if (status == 0) {
+            if (`${status}` == "undefined") {
+                statusPopup.innerText = "";
+            } else if (status == 0) {
 				statusPopup.innerText = "Locked successfully!";
 			} else if (status == -1) {
 				statusPopup.innerText = "Try again";
+			} else if (status == -2) {
+				statusPopup.innerText = "Can't lock in a red zone";
 			} else {
                 statusPopup.innerText = `The price of locking is ${status} kr.`
             }
 		}
 
 		function statusUnlock(status) {
-			if (status == 0) {
+            if (`${status}` == "undefined") {
+                statusPopup.innerText = "";
+            } else if (status == 0) {
 				statusPopup.innerText = "Unlocked successfully!";
 			} else if (status == -1) {
 				statusPopup.innerText = "Try again";

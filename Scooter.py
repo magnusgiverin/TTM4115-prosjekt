@@ -45,7 +45,7 @@ class Scooter:
         self.unlock_time = None
         self.stm_driver = Driver()
         
-        self.ping_interval = 50
+        self.ping_interval = 100
         
         self.MQTT_BROKER = 'mqtt20.iik.ntnu.no'
         self.MQTT_PORT = 1883
