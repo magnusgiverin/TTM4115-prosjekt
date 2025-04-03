@@ -7,17 +7,7 @@ import time
 import ssl
 import json
 from datetime import datetime
-from sense_hat import SenseHat, ACTION_RELEASED
-
-"""
 from sense_hat import SenseHat
-import RPi.GPIO as GPIO  # For button handling
-"""
-import signal
-import sys
-import pickle
-
-
 
 # MQTT_TOPIC_INPUT = 'ttm4115/team_4_project/command'
 
@@ -93,6 +83,8 @@ class Scooter:
         self.sense.stick.direction_down = self.pushed_down
         self.sense.stick.direction_right = self.pushed_right
         self.sense.stick.direction_left = self.pushed_left
+
+        self.sense.show_message("Locked")
 
         try:
             message = {
@@ -224,6 +216,7 @@ class Scooter:
         self.user_id = None
 
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+        self.sense.show_message("Locked")
 
     def unlock_scooter(self):
         logging.info("Scooter is now unlocked.")
@@ -243,6 +236,8 @@ class Scooter:
 
         self.transaction_id = None
         self.mqtt_client.publish(self.MQTT_TOPIC_INPUT, json.dumps(message))
+
+        self.sense.show_message("Unlocked")
 
     def send_error(self):
         logging.info("Invalid command recieved.")
