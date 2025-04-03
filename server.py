@@ -86,6 +86,8 @@ def calculateCost(scooterID):
     currentCoords = locations[scooterID]
 
     for zone in zones:
+        print(zone)
+        print(currentCoords)
         if zone[1][0] < currentCoords[0] and currentCoords[0] < zone[1][1]:
             if zone[2][0] < currentCoords[1] and currentCoords[1] < zone[2][1]:
                 if zone[0] == "yellow":
