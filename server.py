@@ -83,7 +83,7 @@ def returnZones():
 
 def calculateCost(scooterID):
     cost = 0
-    currentCoords = locations[scooterID]
+    currentCoords = locations[scooterID][0]["coordinates"]
 
     for zone in zones:
         print(zone)
