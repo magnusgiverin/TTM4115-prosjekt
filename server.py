@@ -10,11 +10,23 @@ from ScooterManager import ScooterManagerComponent
 app = Flask(__name__)
 scooterManager = ScooterManagerComponent()
 locations = {}
-# getLocationsInterval = 0.02
-getLocationsInterval = 1
-yellowZoneFee = 10
+getLocationsInterval = 0.02
+# getLocationsInterval = 1
+
+mutex = threading.Lock()
+
+yellowZoneLockFee = 10
+
+standardUnlockDiscount = 5
+yellowZoneUnlockDiscount = 15
+redZoneUnlockDiscount = 30
+
+standardDrivingFee = 1
+yellowZoneDrivingFee = 2
+redZoneDrivingFee = 3
 userCurrentScooter = {}
-    # userID: [ScooterID, locking confirmation]
+    # userID: [ScooterID, locking confirmation, current discounts]
+currentRoutes = {}
 
 zones = [
     ["yellow", (10.5,60), (20,64)],
@@ -22,13 +34,26 @@ zones = [
     ["red",    (50,50),   (67,69)]
 ]
 
+
 @app.route('/')
 def login():
     return render_template("login.html")
 
+
 @app.route('/<int:userID>')
 def home(userID=None):
     return render_template("index.html", userID=userID)
+
+
+@app.route('/getLocations')
+def returnLocations():
+    return jsonify(locations)
+
+
+@app.route('/getZones')
+def returnZones():
+    return jsonify(zones)
+
 
 @app.route('/guiClick', methods=['POST'])
 def guiClick():
@@ -46,69 +71,117 @@ def guiClick():
             return toggleScooterStatus(command, scooterID, userID, transaction_id)
         case "lock":
             return toggleScooterStatus(command, scooterID, userID, transaction_id)
-        case "getPrice":
-            return calculateCost(scooterID)
+
 
 def toggleScooterStatus(command, scooterID, userID, transaction_id):
     # prevent unlocking multiple scooters
     if userID in userCurrentScooter:
         if command == "unlock":
-            return jsonify(-1)
+            return jsonify(["unlock_fail", 0])
 
     if command == "lock":
-        cost = calculateCost(scooterID)
-        if cost != 0 and userCurrentScooter[userID][1] == False:
-            print("calculating cost")
-            if cost != -2:
+        currentCoords = locations[scooterID][0]["coordinates"]
+        zone = calculateZone(currentCoords)
+        fee = zoneToLockFee(zone)
+        if zone != "none" and userCurrentScooter[userID][1] == False:
+            if zone == "yellow":
                 userCurrentScooter[userID][1] = True
-            return jsonify(cost)
+            elif zone == "red":
+                return jsonify(["lock_red", 0])
+            return jsonify(["lock_fee", fee])
         elif userID in userCurrentScooter:
-            print("locked")
             scooterManager.on_frontend_command(command, scooterID, transaction_id, userID)
+            mutex.acquire()
+            fare = calculateFare(scooterID, userID)
+            mutex.release()
             userCurrentScooter.pop(userID)
+            currentRoutes[scooterID] = []
+            return jsonify(["lock_fare", fare])
 
     # while(scooterManager.get_status(transaction_id) == None):
     #     sleep(0.1)
 
     if command == "unlock":
-        scooterManager.on_frontend_command(command, scooterID, transaction_id, userID)
-        userCurrentScooter[userID] = [scooterID, False]
-    return jsonify(0)
+        currentCoords = locations[scooterID][0]["coordinates"]
+        zone = calculateZone(currentCoords)
+        discount = zoneToUnlockDiscount(zone)
+        if userID in userCurrentScooter:
+            if zone != "none" and userCurrentScooter[userID][1] == False:
+                if zone == "yellow":
+                    userCurrentScooter[userID][1] = True
+                return jsonify(["unlock_discount", discount])
+        elif userID not in userCurrentScooter:
+            scooterManager.on_frontend_command(command, scooterID, transaction_id, userID)
+            userCurrentScooter[userID] = [scooterID, False, discount]
+            return jsonify(["unlock_success", 0])
+    return jsonify(["error", 0])
 
-@app.route('/getLocations')
-def returnLocations():
-    return jsonify(locations)
 
-@app.route('/getZones')
-def returnZones():
-    return jsonify(zones)
+def calculateFare(scooterID, userID):
+    totalCost = userCurrentScooter[userID][2] # unlock discount
 
-# @app.route('/getCost')
-# def returnZoneAndCost():
-#     pass
+    for sample in currentRoutes[scooterID]:
+        zone = calculateZone(sample[1])
+        if zone == "yellow":
+            totalCost += yellowZoneDrivingFee
+        elif zone == "red":
+            totalCost += redZoneDrivingFee
+        else:
+            totalCost += standardDrivingFee
 
-def calculateCost(scooterID):
-    cost = 0
-    currentCoords = locations[scooterID][0]["coordinates"]
+    return totalCost
 
+
+def zoneToLockFee(zone):
+    if zone == "red":
+        return ""
+    elif zone == "yellow":
+        return yellowZoneLockFee
+    else:
+        return 0
+
+
+def zoneToUnlockDiscount(zone):
+    if zone == "red":
+        return -redZoneUnlockDiscount
+    elif zone == "yellow":
+        return -yellowZoneUnlockDiscount
+    else:
+        return 0
+    
+
+def calculateZone(currentCoords):
     for zone in zones:
         if zone[1][0] < currentCoords[0] and currentCoords[0] < zone[2][0]:
             if zone[1][1] < currentCoords[1] and currentCoords[1] < zone[2][1]:
-                if zone[0] == "yellow":
-                    cost = yellowZoneFee
-                elif zone[0] == "red":
-                    cost = -2
-                break
+                return zone[0]
+    return "none"
 
-    return cost
 
 def updateLocations():
     while True:
         global locations
         locations = scooterManager.get_data()
         print(locations)
+        print(currentRoutes)
+        
+        mutex.acquire()
+
+        for key in locations:
+            if locations[key][0]["locked"] == False:
+                coordinates = locations[key][0]["coordinates"]
+                timestamp = locations[key][1]
+                if key in currentRoutes:
+                    if (timestamp, coordinates) not in currentRoutes[key]: # don't add duplicates
+                        currentRoutes[key].append((timestamp, coordinates))
+                else:
+                    currentRoutes[key] = [(timestamp, coordinates)]
+
+        mutex.release()
+
         sleep(getLocationsInterval)
         
+
 if __name__ == '__main__':
 
     locationsThread = threading.Thread(target=updateLocations)
