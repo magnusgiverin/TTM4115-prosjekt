@@ -110,7 +110,7 @@ class ScooterManagerComponent:
         result = {}
         
         for key, value in self.data.items():
-            if timestamp - value[1] <= value[2] // 10 and key != None:
+            if timestamp - value[1] <= value[2] // 10:
                 # Only include scooters with a recent timestamp within the interval
                 result[key] = (value[0], value[1])
         
